@@ -179,31 +179,39 @@ func createArchiveCmd(a *App) *cli.Command {
 		Aliases: []string{"a"},
 		Usage:   "Archive (or unarchive) a project",
 		Action: func(ctx context.Context, command *cli.Command) error {
-			var ref int
-			if arg := command.Args().First(); arg != "" {
-				var err error
-				ref, err = strconv.Atoi(arg)
-				if err != nil {
-					return errors.New("invalid project ref")
+			var refs []int
+			if command.NArg() == 0 {
+				refs = []int{0}
+			} else {
+				for _, arg := range command.Args().Slice() {
+					ref, err := strconv.Atoi(arg)
+					if err != nil {
+						return err
+					}
+					refs = append(refs, ref)
 				}
 			}
-			p, err := a.ProjectByRef(ref)
-			if err != nil {
-				return err
+
+			for _, ref := range refs {
+				p, err := a.ProjectByRef(ref)
+				if err != nil {
+					return err
+				}
+
+				if !p.Archived && p.InProgress() {
+					a.Stop(p)
+					renderStopped(p)
+					fmt.Println()
+				}
+
+				p.Archived = !p.Archived
+				if p.Archived {
+					fmt.Printf("%s %s %s\n", grey.Render("Archived:"), p.Name, p.prettyRefParen())
+				} else {
+					fmt.Printf("%s %s %s\n", white.Render("Unarchived:"), p.Name, p.prettyRefParen())
+				}
 			}
 
-			if !p.Archived && p.InProgress() {
-				a.Stop(p)
-				renderStopped(p)
-				fmt.Println()
-			}
-
-			p.Archived = !p.Archived
-			if p.Archived {
-				fmt.Printf("%s %s %s\n", grey.Render("Archived:"), p.Name, p.prettyRefParen())
-			} else {
-				fmt.Printf("%s %s %s\n", white.Render("Unarchived:"), p.Name, p.prettyRefParen())
-			}
 			return nil
 		},
 	}
@@ -325,15 +333,8 @@ func (a *App) ProjectByRef(ref int) (*Project, error) {
 	if len(a.DB.Projects) == 0 {
 		return nil, ErrNoProjects
 	}
-	if ref < 10 {
-		activeProjects := a.DB.ListProjects(false)
-		if ref > len(activeProjects) {
-			return nil, errors.New("project not found")
-		}
-		return activeProjects[ref], nil
-	}
 	for _, p := range a.DB.Projects {
-		if p.ID == ref {
+		if p.Ref == ref || p.ID == ref {
 			return p, nil
 		}
 	}
