@@ -77,7 +77,7 @@ $ tk ls
 Ref        Name       Last Start     Last Duration  This Week   Total
 0 (id=11)  Task name  2 minutes ago  6 seconds      7 minutes   7 minutes
 1 (id=16)  Test       2 minutes ago  7 seconds      23 seconds  23 seconds
-2 (id=14)  Test       2 minutes ago  2 seconds      37 seconds  37 seconds```
+2 (id=14)  Test       2 minutes ago  2 seconds      37 seconds  37 seconds
 ```
 
 ### List archived tasks
@@ -92,7 +92,7 @@ Ref        Name          Last Start      Last Duration  This Week   Total       
 13         Test          1 minute ago    1 minute       2 minutes   2 minutes   True
 15         Test          42 minutes ago  38 minutes     38 minutes  38 minutes  True
 12         Another task  51 minutes ago  1 minute       1 minute    1 minute    True
-````
+```
 
 ### Start/stop a task by reference.
 
