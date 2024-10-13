@@ -10,11 +10,11 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
-	"github.com/hako/durafmt"
 	"github.com/joho/godotenv"
 	"github.com/urfave/cli/v3"
 )
@@ -533,7 +533,7 @@ func (p Project) DurationFormatted() string {
 	if !ok {
 		return cyan.Render("-")
 	}
-	return cyan.Render(durafmt.ParseShort(e.Duration()).String())
+	return cyan.Render(formatDuration(e.Duration()))
 }
 
 func (p Project) ThisWeek() time.Duration {
@@ -554,7 +554,7 @@ func (p Project) ThisWeekFormatted() string {
 	if len(p.Entries) == 0 {
 		return cyan.Render("-")
 	}
-	return cyan.Render(durafmt.ParseShort(p.ThisWeek()).String())
+	return cyan.Render(formatDuration(p.ThisWeek()))
 }
 
 func (p Project) Total() time.Duration {
@@ -569,7 +569,7 @@ func (p Project) TotalFormatted() string {
 	if len(p.Entries) == 0 {
 		return cyan.Render("-")
 	}
-	return cyan.Render(durafmt.ParseShort(p.Total()).String())
+	return cyan.Render(formatDuration(p.Total()))
 }
 
 func (p Project) LastStartFormatted() string {
@@ -577,7 +577,7 @@ func (p Project) LastStartFormatted() string {
 	if !ok {
 		return cyan.Render("-")
 	}
-	return cyan.Render(durafmt.ParseShort(time.Since(e.Start)).String() + " ago")
+	return cyan.Render(formatDuration(time.Since(e.Start)) + " ago")
 }
 
 type Entry struct {
@@ -602,6 +602,7 @@ type DB struct {
 }
 
 func (db *DB) Init() {
+
 	// Sort projects so that most recently started projects are first, and archived projects are last.
 	slices.SortFunc(db.Projects, (*Project).Compare)
 
@@ -769,4 +770,30 @@ func grid(rows ...[]string) string {
 		})
 
 	return t.String()
+}
+
+func formatDuration(dur time.Duration) string {
+	var parts []string
+	if d := int(dur.Hours()); d > 24 {
+		parts = append(parts, fmt.Sprintf("%dd", d/24))
+		dur -= time.Duration(d) * 24 * time.Hour
+	}
+	if h := int(dur.Hours()); h > 0 {
+		parts = append(parts, fmt.Sprintf("%dh", h))
+		dur -= time.Duration(h) * time.Hour
+	}
+	if m := int(dur.Minutes()); m > 0 {
+		parts = append(parts, fmt.Sprintf("%dm", m))
+		dur -= time.Duration(m) * time.Minute
+	}
+	if s := int(dur.Seconds()); s > 0 {
+		parts = append(parts, fmt.Sprintf("%ds", s))
+	}
+	if len(parts) == 0 {
+		return "-"
+	}
+	if len(parts) > 2 {
+		parts = parts[:2]
+	}
+	return strings.Join(parts, "")
 }
