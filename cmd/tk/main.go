@@ -23,9 +23,9 @@ var grey = lipgloss.NewStyle().
 	Bold(true).
 	Foreground(lipgloss.Color("246"))
 
-//var white = lipgloss.NewStyle().
-//	Bold(true).
-//	Foreground(lipgloss.Color("7"))
+var white = lipgloss.NewStyle().
+	Bold(true).
+	Foreground(lipgloss.Color("7"))
 
 var cyan = lipgloss.NewStyle().
 	Bold(true).
@@ -80,6 +80,7 @@ func createRootCmd(a *App) *cli.Command {
 		Commands: []*cli.Command{
 			createToggleCmd(a),
 			createListCmd(a),
+			createArchiveCmd(a),
 		},
 		Action: func(ctx context.Context, command *cli.Command) error {
 			if len(a.DB.Projects) == 0 {
@@ -120,8 +121,9 @@ func createListCmd(a *App) *cli.Command {
 		Usage:   "List projects",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
-				Name:  "all",
-				Usage: "List all projects, including archived ones",
+				Name:    "all",
+				Aliases: []string{"a"},
+				Usage:   "List all projects, including archived ones",
 			},
 		},
 		Action: func(ctx context.Context, command *cli.Command) error {
@@ -131,27 +133,77 @@ func createListCmd(a *App) *cli.Command {
 				fmt.Println("No projects")
 				return nil
 			}
-			rows := [][]string{{"Ref", "Name", "Last Start", "Last Duration", "This Week", "Total"}}
+			header := []string{"Ref", "Name", "Last Start", "Last Duration", "This Week", "Total"}
+			if all {
+				header = append(header, "Archived")
+			}
+			rows := [][]string{header}
 			for _, p := range projects {
 				e, _ := p.LastEntry()
-				name := p.Name
-				if p.InProgress() {
-					name = green.Render(name)
-				}
 				if p.Archived {
-					name = grey.Render(name)
+					rows = append(rows, []string{
+						p.prettyRef(),
+						grey.Render(p.Name),
+						grey.Render(durafmt.ParseShort(time.Since(e.Start)).String() + " ago"),
+						grey.Render(durafmt.ParseShort(e.Duration()).String()),
+						grey.Render(durafmt.ParseShort(p.ThisWeek()).String()),
+						grey.Render(durafmt.ParseShort(p.Total()).String()),
+						grey.Render("True"),
+					})
+				} else {
+					name := p.Name
+					if p.InProgress() {
+						name = green.Render(name)
+					}
+					rows = append(rows, []string{
+						p.prettyRef(),
+						name,
+						durafmt.ParseShort(time.Since(e.Start)).String() + " ago",
+						cyan.Render(durafmt.ParseShort(e.Duration()).String()),
+						cyan.Render(durafmt.ParseShort(p.ThisWeek()).String()),
+						cyan.Render(durafmt.ParseShort(p.Total()).String()),
+					})
 				}
-				rows = append(rows, []string{
-					fmt.Sprintf("%s", cyan.Render(strconv.Itoa(p.Ref))),
-					name,
-					durafmt.ParseShort(time.Since(e.Start)).String() + " ago",
-					cyan.Render(durafmt.ParseShort(e.Duration()).String()),
-					cyan.Render(durafmt.ParseShort(p.ThisWeek()).String()),
-					cyan.Render(durafmt.ParseShort(p.Total()).String()),
-				})
+
 			}
 
 			fmt.Println(grid(rows...))
+			return nil
+		},
+	}
+}
+
+func createArchiveCmd(a *App) *cli.Command {
+	return &cli.Command{
+		Name:    "archive",
+		Aliases: []string{"a"},
+		Usage:   "Archive (or unarchive) a project",
+		Action: func(ctx context.Context, command *cli.Command) error {
+			var ref int
+			if arg := command.Args().First(); arg != "" {
+				var err error
+				ref, err = strconv.Atoi(arg)
+				if err != nil {
+					return errors.New("invalid project ref")
+				}
+			}
+			p, err := a.ProjectByRef(ref)
+			if err != nil {
+				return err
+			}
+
+			if !p.Archived && p.InProgress() {
+				a.Stop(p)
+				renderStopped(p)
+				fmt.Println()
+			}
+
+			p.Archived = !p.Archived
+			if p.Archived {
+				fmt.Printf("%s %s %s\n", grey.Render("Archived:"), p.Name, p.prettyRefParen())
+			} else {
+				fmt.Printf("%s %s %s\n", white.Render("Unarchived:"), p.Name, p.prettyRefParen())
+			}
 			return nil
 		},
 	}
@@ -167,16 +219,13 @@ type ToggleInput struct {
 }
 
 func renderStopped(p *Project) {
-	fmt.Printf("%s %s (ref=%s)\n", red.Render("Stopped:"), p.Name, cyan.Render(strconv.Itoa(p.Ref)))
+	fmt.Printf("%s %s %s\n", red.Render("Stopped:"), p.Name, p.prettyRefParen())
 	fmt.Println()
 	renderStats(p, true)
 }
 
 func renderStarted(p *Project) {
-	fmt.Printf("%s %s", green.Render("Started:"), p.Name)
-	if !p.JustCreated {
-		fmt.Printf(" (ref=%s)", cyan.Render(strconv.Itoa(p.Ref)))
-	}
+	fmt.Printf("%s %s %s\n", green.Render("Started:"), p.Name, p.prettyRefParen())
 	fmt.Println()
 	if !p.JustCreated {
 		fmt.Println()
@@ -191,7 +240,7 @@ func renderCurrent(p *Project) {
 	} else {
 		state = red.Render("Stopped:")
 	}
-	fmt.Printf("%s %s (ref=%s)\n", state, p.Name, cyan.Render(strconv.Itoa(p.Ref)))
+	fmt.Printf("%s %s %s\n", state, p.Name, p.prettyRefParen())
 	fmt.Println()
 	renderStats(p, true)
 }
@@ -277,10 +326,11 @@ func (a *App) ProjectByRef(ref int) (*Project, error) {
 		return nil, ErrNoProjects
 	}
 	if ref < 10 {
-		if ref > len(a.DB.Projects) {
+		activeProjects := a.DB.ListProjects(false)
+		if ref > len(activeProjects) {
 			return nil, errors.New("project not found")
 		}
-		return a.DB.Projects[ref], nil
+		return activeProjects[ref], nil
 	}
 	for _, p := range a.DB.Projects {
 		if p.ID == ref {
@@ -310,6 +360,23 @@ type Project struct {
 	Entries     []Entry `json:"entries"`
 	Archived    bool    `json:"archived"`
 	JustCreated bool    `json:"-"`
+}
+
+func (p Project) prettyRef() string {
+	if p.Ref == p.ID {
+		return cyan.Render(strconv.Itoa(p.Ref))
+	}
+	return fmt.Sprintf("%s (id=%s)", cyan.Render(strconv.Itoa(p.Ref)), cyan.Render(strconv.Itoa(p.ID)))
+}
+
+func (p *Project) prettyRefParen() string {
+	if p.Ref == p.ID {
+		return fmt.Sprintf("(ref=%s)", cyan.Render(strconv.Itoa(p.Ref)))
+	}
+	if p.JustCreated {
+		return fmt.Sprintf("(id=%s)", cyan.Render(strconv.Itoa(p.ID)))
+	}
+	return fmt.Sprintf("(ref=%s id=%s)", cyan.Render(strconv.Itoa(p.Ref)), cyan.Render(strconv.Itoa(p.ID)))
 }
 
 func (p *Project) Equal(other *Project) bool {
@@ -382,14 +449,16 @@ type DB struct {
 	Projects  []*Project `json:"projects"`
 }
 
-func (db *DB) Resort() {
+func (db *DB) RefAndSort() {
 	slices.SortFunc(db.Projects, byMostRecent)
-	for i, p := range db.Projects {
-		if i < 10 {
-			p.Ref = i
-		} else {
-			p.Ref = p.ID
+	for _, p := range db.Projects {
+		p.Ref = p.ID
+	}
+	for i, p := range db.ListProjects(false) {
+		if i >= 10 {
+			break
 		}
+		p.Ref = i
 	}
 }
 
@@ -433,6 +502,12 @@ func (db *DB) CreateProject(p *Project) {
 // - projects with no entries are last
 // - projects with entries are sorted in descending order by the start time of the last entry
 func byMostRecent(p1, p2 *Project) int {
+	if p1.Archived != p2.Archived {
+		if p1.Archived {
+			return 1
+		}
+		return -1
+	}
 	e1, ok1 := p1.LastEntry()
 	e2, ok2 := p2.LastEntry()
 
@@ -469,7 +544,7 @@ func readDB() (DB, error) {
 		return DB{}, err
 	}
 
-	db.Resort()
+	db.RefAndSort()
 
 	return db, nil
 }
