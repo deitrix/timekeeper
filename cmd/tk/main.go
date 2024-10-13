@@ -60,7 +60,7 @@ func run(ctx context.Context) error {
 	// Clone the DB so that we can compare it later to see if it changed.
 	a := &App{DB: db.Clone()}
 
-	rootCmd := createRootCmd(a)
+	rootCmd := a.createRootCmd()
 	if err := rootCmd.Run(ctx, os.Args); err != nil {
 		return err
 	}
@@ -74,14 +74,16 @@ func run(ctx context.Context) error {
 	return nil
 }
 
-func createRootCmd(a *App) *cli.Command {
+func (a *App) createRootCmd() *cli.Command {
 	return &cli.Command{
 		Name: "tk",
 		Commands: []*cli.Command{
-			createToggleCmd(a),
-			createListCmd(a),
-			createArchiveCmd(a),
-			createRemoveCmd(a),
+			a.createStartCmd(),
+			a.createStopCmd(),
+			a.createStartStopCmd(),
+			a.createListCmd(),
+			a.createArchiveCmd(),
+			a.createRemoveCmd(),
 		},
 		Action: func(ctx context.Context, command *cli.Command) error {
 			if len(a.DB.Projects) == 0 {
@@ -94,28 +96,97 @@ func createRootCmd(a *App) *cli.Command {
 	}
 }
 
-func createToggleCmd(a *App) *cli.Command {
+func (a *App) createStopCmd() *cli.Command {
 	return &cli.Command{
-		Name:    "toggle",
-		Aliases: []string{"start", "stop", "s"},
-		Usage:   "Start or stop the current project (or start a new project)",
+		Name:  "stop",
+		Usage: "Stop the current project",
 		Action: func(ctx context.Context, command *cli.Command) error {
-			arg := command.Args().First()
-			var in ToggleInput
-
-			ref, err := strconv.Atoi(arg)
-			if err != nil {
-				in.ProjectName = arg
-			} else {
-				in.ProjectRef = ref
+			p, ok := a.InProgressProject()
+			if !ok {
+				fmt.Println("No project in progress")
+				return nil
 			}
 
-			return a.Toggle(in)
+			a.Stop(p)
+			renderStopped(p)
+
+			return nil
 		},
 	}
 }
 
-func createListCmd(a *App) *cli.Command {
+func (a *App) createStartCmd() *cli.Command {
+	return &cli.Command{
+		Name:  "start",
+		Usage: "Start the current project, or create a new one",
+		Action: func(ctx context.Context, command *cli.Command) error {
+			name := command.Args().First()
+			ref, err := strconv.Atoi(name)
+			if err == nil {
+				name = ""
+			}
+
+			p, err := a.GetOrCreateProject(ref, name)
+			if err != nil {
+				return err
+			}
+
+			// Stop the currently in-progress project, if any. There can only ever be at most one project in
+			// progress at a time. So, this could well be the same project as the one we're about to start.
+			if ip, ok := a.InProgressProject(); ok {
+				if ip.ID == p.ID {
+					fmt.Println("Project already in progress")
+					return nil
+				}
+
+				a.Stop(ip)
+				renderStopped(ip)
+				fmt.Println()
+			}
+
+			a.Start(p)
+			renderStarted(p)
+
+			return nil
+		},
+	}
+}
+
+func (a *App) createStartStopCmd() *cli.Command {
+	return &cli.Command{
+		Name:  "s",
+		Usage: "Context-aware start/stop",
+		Action: func(ctx context.Context, command *cli.Command) error {
+			name := command.Args().First()
+			ref, err := strconv.Atoi(name)
+			if err == nil {
+				name = ""
+			}
+
+			p, err := a.GetOrCreateProject(ref, name)
+			if err != nil {
+				return err
+			}
+
+			// Stop the currently in-progress project, if any. There can only ever be at most one project in
+			// progress at a time. So, this could well be the same project as the one we're about to start.
+			if ip, ok := a.InProgressProject(); ok && a.Stop(ip) {
+				renderStopped(ip)
+				if p.ID == ip.ID {
+					return nil
+				}
+				fmt.Println()
+			}
+
+			a.Start(p)
+			renderStarted(p)
+
+			return nil
+		},
+	}
+}
+
+func (a *App) createListCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "list",
 		Aliases: []string{"ls", "l"},
@@ -174,7 +245,7 @@ func createListCmd(a *App) *cli.Command {
 	}
 }
 
-func createArchiveCmd(a *App) *cli.Command {
+func (a *App) createArchiveCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "archive",
 		Aliases: []string{"a"},
@@ -218,7 +289,7 @@ func createArchiveCmd(a *App) *cli.Command {
 	}
 }
 
-func createRemoveCmd(a *App) *cli.Command {
+func (a *App) createRemoveCmd() *cli.Command {
 	return &cli.Command{
 		Name:    "remove",
 		Aliases: []string{"rm", "r"},
@@ -254,11 +325,6 @@ func createRemoveCmd(a *App) *cli.Command {
 
 type App struct {
 	DB DB
-}
-
-type ToggleInput struct {
-	ProjectRef  int
-	ProjectName string
 }
 
 func renderStopped(p *Project) {
@@ -309,29 +375,6 @@ func (a *App) GetOrCreateProject(ref int, newProjectName string) (*Project, erro
 		return p, nil
 	}
 	return nil, err
-}
-
-func (a *App) Toggle(in ToggleInput) error {
-	p, err := a.GetOrCreateProject(in.ProjectRef, in.ProjectName)
-	if err != nil {
-		return err
-	}
-
-	// Stop the currently in-progress project, if any. There can only ever be at most one project in
-	// progress at a time. So, this could well be the same project as the one we're about to start.
-	ip, ok := a.InProgressProject()
-	if ok && a.Stop(ip) {
-		renderStopped(ip)
-		if p.ID == ip.ID {
-			return nil
-		}
-		fmt.Println()
-	}
-
-	a.Start(p)
-	renderStarted(p)
-
-	return nil
 }
 
 func (a *App) CreateProject(name string) *Project {
