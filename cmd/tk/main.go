@@ -294,11 +294,24 @@ func (a *App) createRemoveCmd() *cli.Command {
 		Name:    "remove",
 		Aliases: []string{"rm", "r"},
 		Usage:   "Remove a project",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:    "all",
+				Aliases: []string{"a"},
+				Usage:   "Remove all projects",
+			},
+		},
 		Action: func(ctx context.Context, command *cli.Command) error {
 			var refs []int
-			if command.NArg() == 0 {
+			switch {
+			case command.Bool("all"):
+				refs = make([]int, len(a.DB.Projects))
+				for i, p := range a.DB.Projects {
+					refs[i] = p.ID
+				}
+			case command.NArg() == 0:
 				refs = []int{0}
-			} else {
+			default:
 				for _, arg := range command.Args().Slice() {
 					ref, err := strconv.Atoi(arg)
 					if err != nil {
