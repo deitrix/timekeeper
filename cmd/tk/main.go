@@ -173,7 +173,11 @@ func renderStopped(p *Project) {
 }
 
 func renderStarted(p *Project) {
-	fmt.Printf("%s %s (ref=%s)\n", green.Render("Started:"), p.Name, cyan.Render(strconv.Itoa(p.Ref)))
+	fmt.Printf("%s %s", green.Render("Started:"), p.Name)
+	if !p.JustCreated {
+		fmt.Printf(" (ref=%s)", cyan.Render(strconv.Itoa(p.Ref)))
+	}
+	fmt.Println()
 	if !p.JustCreated {
 		fmt.Println()
 		renderStats(p, false)
@@ -224,22 +228,16 @@ func (a *App) Toggle(in ToggleInput) error {
 
 	// Stop the currently in-progress project, if any. There can only ever be at most one project in
 	// progress at a time. So, this could well be the same project as the one we're about to start.
-	var stopped bool
 	ip, ok := a.InProgressProject()
 	if ok && a.Stop(ip) {
+		renderStopped(ip)
 		if p.ID == ip.ID {
-			renderStopped(ip)
 			return nil
 		}
-		stopped = true
+		fmt.Println()
 	}
 
 	a.Start(p)
-	a.DB.Resort()
-	if stopped {
-		renderStopped(ip)
-		fmt.Println()
-	}
 	renderStarted(p)
 
 	return nil
