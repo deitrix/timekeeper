@@ -523,21 +523,29 @@ func (e Entry) InProgress() bool {
 }
 
 type DB struct {
-	ProjectID int        `json:"projectId"`
+	ProjectID int        `json:"-"`
 	Projects  []*Project `json:"projects"`
 }
 
-func (db *DB) RefAndSort() {
+func (db *DB) Init() {
+	// Sort projects so that most recently started projects are first, and archived projects are last.
 	slices.SortFunc(db.Projects, byMostRecent)
+
+	// Initially, give each project a reference number equal to its ID. Also, update the project ID
+	// to be the highest ID in the list.
 	for _, p := range db.Projects {
 		p.Ref = p.ID
+		db.ProjectID = max(db.ProjectID, p.ID)
 	}
+
+	// For the first 10 projects, give them a reference number equal to their index in the list.
 	for i, p := range db.ListProjects(false) {
 		if i >= 10 {
 			break
 		}
 		p.Ref = i
 	}
+
 }
 
 func (db DB) Equal(other DB) bool {
@@ -589,6 +597,7 @@ func (db *DB) RemoveProject(p *Project) {
 // byMostRecent sorts projects such that:
 // - projects with no entries are last
 // - projects with entries are sorted in descending order by the start time of the last entry
+// - archived projects are last
 func byMostRecent(p1, p2 *Project) int {
 	if p1.Archived != p2.Archived {
 		if p1.Archived {
@@ -632,7 +641,7 @@ func readDB() (DB, error) {
 		return DB{}, err
 	}
 
-	db.RefAndSort()
+	db.Init()
 
 	return db, nil
 }
