@@ -25,7 +25,7 @@ var grey = lipgloss.NewStyle().
 
 var white = lipgloss.NewStyle().
 	Bold(true).
-	Foreground(lipgloss.Color("7"))
+	Foreground(lipgloss.Color("15"))
 
 var cyan = lipgloss.NewStyle().
 	Bold(true).
@@ -85,6 +85,7 @@ func (a *App) createRootCmd() *cli.Command {
 			a.listCmd(),
 			a.archiveCmd(),
 			a.removeCmd(),
+			a.weekCmd(),
 		},
 		Action: func(ctx context.Context, command *cli.Command) error {
 			if len(a.DB.Projects) == 0 {
@@ -239,6 +240,9 @@ func (a *App) listCmd() *cli.Command {
 			if allArchived {
 				header = append(header, "Archived")
 			}
+			for i, h := range header {
+				header[i] = white.Render(h)
+			}
 			rows := [][]string{header}
 			for _, p := range projects {
 				if p.Archived {
@@ -362,6 +366,40 @@ func (a *App) removeCmd() *cli.Command {
 				fmt.Printf("%s %s %s\n", red.Render("Removed:"), p.Name, p.prettyRefParen())
 			}
 
+			return nil
+		},
+	}
+}
+
+func (a *App) weekCmd() *cli.Command {
+	return &cli.Command{
+		Name:  "week",
+		Usage: "Show a summary of the current week",
+		Action: func(ctx context.Context, command *cli.Command) error {
+			projects := a.DB.ListProjects(false)
+			if len(projects) == 0 {
+				fmt.Println("No projects")
+				return nil
+			}
+
+			header := []string{"Name", "This Week", "Total"}
+			for i, h := range header {
+				header[i] = white.Render(h)
+			}
+			rows := [][]string{header}
+			for _, p := range projects {
+				thisWeek := p.ThisWeek()
+				if thisWeek == 0 {
+					continue
+				}
+				rows = append(rows, []string{
+					p.Name,
+					cyan.Render(formatDuration(thisWeek)),
+					cyan.Render(p.TotalFormatted()),
+				})
+			}
+
+			fmt.Println(grid(rows...))
 			return nil
 		},
 	}
