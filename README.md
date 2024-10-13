@@ -112,3 +112,21 @@ Started: Task name (ref=0)
 This week  4 seconds
 Total      4 seconds
 ```
+
+### Delete a task
+
+```shell
+$ tk rm 1
+
+Deleted: Another task (ref=1)
+```
+
+### Delete multiple tasks
+
+```shell
+$ tk rm 1 2 3
+
+Deleted: Another task (ref=1)
+Deleted: Task name (ref=2)
+Deleted: Test (ref=3)
+```

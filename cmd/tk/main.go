@@ -81,6 +81,7 @@ func createRootCmd(a *App) *cli.Command {
 			createToggleCmd(a),
 			createListCmd(a),
 			createArchiveCmd(a),
+			createRemoveCmd(a),
 		},
 		Action: func(ctx context.Context, command *cli.Command) error {
 			if len(a.DB.Projects) == 0 {
@@ -210,6 +211,40 @@ func createArchiveCmd(a *App) *cli.Command {
 				} else {
 					fmt.Printf("%s %s %s\n", white.Render("Unarchived:"), p.Name, p.prettyRefParen())
 				}
+			}
+
+			return nil
+		},
+	}
+}
+
+func createRemoveCmd(a *App) *cli.Command {
+	return &cli.Command{
+		Name:    "remove",
+		Aliases: []string{"rm", "r"},
+		Usage:   "Remove a project",
+		Action: func(ctx context.Context, command *cli.Command) error {
+			var refs []int
+			if command.NArg() == 0 {
+				refs = []int{0}
+			} else {
+				for _, arg := range command.Args().Slice() {
+					ref, err := strconv.Atoi(arg)
+					if err != nil {
+						return err
+					}
+					refs = append(refs, ref)
+				}
+			}
+
+			for _, ref := range refs {
+				p, err := a.ProjectByRef(ref)
+				if err != nil {
+					return err
+				}
+
+				a.DB.RemoveProject(p)
+				fmt.Printf("%s %s %s\n", red.Render("Removed:"), p.Name, p.prettyRefParen())
 			}
 
 			return nil
@@ -497,6 +532,16 @@ func (db *DB) CreateProject(p *Project) {
 	db.ProjectID++
 	p.ID = db.ProjectID
 	db.Projects = append(db.Projects, p)
+}
+
+func (db *DB) RemoveProject(p *Project) {
+	var projects []*Project
+	for _, project := range db.Projects {
+		if project.ID != p.ID {
+			projects = append(projects, project)
+		}
+	}
+	db.Projects = projects
 }
 
 // byMostRecent sorts projects such that:
