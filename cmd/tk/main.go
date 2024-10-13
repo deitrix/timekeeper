@@ -269,7 +269,6 @@ func renderStopped(p *Project) {
 
 func renderStarted(p *Project) {
 	fmt.Printf("%s %s %s\n", green.Render("Started:"), p.Name, p.prettyRefParen())
-	fmt.Println()
 	if !p.JustCreated {
 		fmt.Println()
 		renderStats(p, false)
