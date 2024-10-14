@@ -92,6 +92,22 @@ func (a *App) createRootCmd() *cli.Command {
 				fmt.Println("No projects. Start one with `tk start <name>`")
 				return nil
 			}
+
+			var today time.Duration
+			var thisWeek time.Duration
+			for _, p := range a.DB.Projects {
+				today += p.Today()
+				thisWeek += p.ThisWeek()
+			}
+			fmt.Println(white.Render("All projects"))
+			fmt.Println()
+			fmt.Println(grid(
+				[]string{"Today", cyan.Render(formatDuration(today))},
+				[]string{"This week", cyan.Render(formatDuration(thisWeek))},
+			))
+			fmt.Println()
+			fmt.Println(white.Render("Current project"))
+			fmt.Println()
 			renderCurrent(a.DB.Projects[0])
 			return nil
 		},
@@ -382,6 +398,17 @@ func (a *App) weekCmd() *cli.Command {
 				return nil
 			}
 
+			var today time.Duration
+			var thisWeek time.Duration
+			for _, p := range a.DB.Projects {
+				today += p.Today()
+				thisWeek += p.ThisWeek()
+			}
+			fmt.Println(white.Render("This week"))
+			fmt.Println()
+			fmt.Printf("Total %s\n", cyan.Render(formatDuration(today)))
+			fmt.Println()
+
 			header := []string{"Name", "This Week", "Total"}
 			for i, h := range header {
 				header[i] = white.Render(h)
@@ -441,6 +468,7 @@ func renderStats(p *Project, duration bool) {
 		rows = append(rows, []string{"Duration", p.DurationFormatted()})
 	}
 	rows = append(rows,
+		[]string{"Today", p.TodayFormatted()},
 		[]string{"This week", p.ThisWeekFormatted()},
 		[]string{"Total", p.TotalFormatted()},
 	)
@@ -595,6 +623,24 @@ func (p Project) ThisWeekFormatted() string {
 	return cyan.Render(formatDuration(p.ThisWeek()))
 }
 
+func (p Project) Today() time.Duration {
+	var total time.Duration
+	for _, e := range p.Entries {
+		y, m, d := e.Start.Date()
+		if y == time.Now().Year() && m == time.Now().Month() && d == time.Now().Day() {
+			total += e.Duration()
+		}
+	}
+	return total
+}
+
+func (p Project) TodayFormatted() string {
+	if len(p.Entries) == 0 {
+		return cyan.Render("-")
+	}
+	return cyan.Render(formatDuration(p.Today()))
+}
+
 func (p Project) Total() time.Duration {
 	var total time.Duration
 	for _, e := range p.Entries {
@@ -709,7 +755,7 @@ func (db *DB) RemoveProject(p *Project) {
 	db.Projects = projects
 }
 
-// byMostRecent sorts projects such that:
+// Compare sorts projects such that:
 // - projects with no entries are last
 // - projects with entries are sorted in descending order by the start time of the last entry
 // - archived projects are last
